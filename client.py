@@ -187,6 +187,115 @@ class ChatClient:
             self._stop_event.set()
             return False
 
+    def _recv_line(self) -> str:
+        """
+        Lê exatamente uma linha do servidor (bloqueante, byte a byte).
+
+        Usado exclusivamente durante o handshake, onde o protocolo é
+        estritamente sequencial e o volume de dados é mínimo — o custo
+        de recv(1) em loop é irrelevante nesse contexto.
+
+        Returns:
+            Linha recebida, decodificada e sem '\\n' ou espaços extras.
+
+        Raises:
+            ConnectionError: Se o servidor fechar a conexão antes do '\\n'.
+        """
+        buf = b""
+        while True:
+            byte = self.sock.recv(1)
+            if not byte:
+                raise ConnectionError("Servidor encerrou a conexão durante o handshake.")
+            if byte == b"\n":
+                return buf.decode(errors="replace").strip()
+            buf += byte
+
+    # ─────────────────────────────────────────────
+    # HANDSHAKE (síncrono — antes de qualquer thread)
+    # ─────────────────────────────────────────────
+
+    def _handshake(self) -> bool:
+        """
+        Conduz o protocolo de autenticação de forma totalmente síncrona.
+
+        Lê linha a linha do servidor usando _recv_line(), garantindo que
+        banner, prompts e status codes sejam processados na ordem exata
+        do protocolo — sem nenhuma thread de recebimento concorrente ativa.
+
+        Protocolo esperado do servidor:
+          S→C  banner (múltiplas linhas) + "USUARIO:\\n"
+          C→S  username\\n
+          S→C  "SENHA:\\n"
+          C→S  password\\n  (ocultado via getpass)
+          S→C  "AUTH_OK\\n"  →  sucesso
+               "AUTH_ERR:X/Y\\n" + "SENHA:\\n"  →  tenta novamente
+               "AUTH_BAN\\n"  →  bloqueado, retorna False
+
+        Returns:
+            True se autenticado com sucesso, False caso contrário.
+        """
+        import getpass
+
+        try:
+            # ── Banner ────────────────────────────────────────────────────
+            # O servidor envia banner + "USUARIO:\n" num único send().
+            # Lemos linha a linha até encontrar o sentinel "USUARIO:".
+            banner_lines = []
+            while True:
+                line = self._recv_line()
+                if line == "USUARIO:":
+                    break
+                banner_lines.append(line)
+
+            # Exibe o banner recebido
+            for bl in banner_lines:
+                print(bl)
+
+            # ── Username ──────────────────────────────────────────────────
+            try:
+                username = input("  Usuário: ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return False
+
+            if not username:
+                local_log("ERRO", "Nome de usuário não pode ser vazio.")
+                return False
+
+            self.sock.send((username + "\n").encode())
+
+            # ── Loop de senha ─────────────────────────────────────────────
+            while True:
+                status = self._recv_line()
+
+                if status == "SENHA:":
+                    try:
+                        password = getpass.getpass("  Senha: ")
+                    except (EOFError, KeyboardInterrupt):
+                        return False
+                    self.sock.send((password + "\n").encode())
+
+                elif status == "AUTH_OK":
+                    print("\n\033[1;32m  [ACESSO AUTORIZADO]\033[0m\n")
+                    return True
+
+                elif status.startswith("AUTH_ERR:"):
+                    attempt_info = status.split(":", 1)[1]  # ex.: "1/3"
+                    print(f"\033[1;31m  Credenciais inválidas — tentativa {attempt_info}.\033[0m")
+                    # Servidor enviará "SENHA:\n" novamente; loop continua
+
+                elif status == "AUTH_BAN":
+                    print(
+                        "\n\033[1;31m  ACESSO BLOQUEADO.\033[0m\n"
+                        "  Número máximo de tentativas excedido.\n"
+                    )
+                    return False
+
+                # Linhas vazias ou desconhecidas são ignoradas silenciosamente
+
+        except (OSError, ConnectionError) as e:
+            local_log("ERRO", f"Falha no handshake: {e}")
+            return False
+
     # ─────────────────────────────────────────────
     # INTERFACE DE USUÁRIO
     # ─────────────────────────────────────────────
@@ -267,9 +376,16 @@ class ChatClient:
         if not self.connect():
             sys.exit(1)
 
-        local_log("INFO", "Conectado. Use /help para ver os comandos disponíveis.")
+        # Fase 1: autenticacao sincrona (sem threads concorrentes)
+        # So apos auth bem-sucedida o canal de mensagens e liberado.
+        if not self._handshake():
+            self.disconnect()
+            sys.exit(1)
 
-        # Thread de recebimento roda em paralelo com a entrada do usuário
+        # Fase 2: comunicacao concorrente
+        local_log("INFO", "Canal aberto. Use /help para ver os comandos disponiveis.")
+
+        # Thread de recebimento roda em paralelo com a entrada do usuario
         recv_thread = threading.Thread(target=self._receive_loop, daemon=True)
         recv_thread.start()
 

@@ -4,6 +4,10 @@ from collections import deque
 from typing import List, Optional
 from datetime import datetime
 
+from auth import AuthManager
+
+MAX_AUTH_ATTEMPTS = 3  # tentativas antes de bloquear a conexão
+
 
 class ChatServer:
     def __init__(self, host: str = "0.0.0.0", port: int = 12345):
@@ -32,6 +36,11 @@ class ChatServer:
         self.history: deque[bytes] = deque(maxlen=20)
 
         self.lock = threading.Lock()
+
+        # Carrega (ou cria) o arquivo de credenciais dos operadores
+        self.auth = AuthManager()
+        if self.auth.count() == 0:
+            self.log("AVISO", "Nenhum operador cadastrado! Execute admin.py antes de conectar clientes.")
 
     # ─────────────────────────────────────────────
     # LOGS
@@ -277,12 +286,86 @@ class ClientHandler(threading.Thread):
 
         return False  # não era um comando
 
+    def _authenticate(self) -> tuple[bool, str]:
+        """
+        Conduz o protocolo de autenticação com o cliente via troca de linhas TCP.
+
+        Protocolo (linha a linha, terminadas em \\n):
+          S→C  Banner + "USUARIO:\\n"
+          C→S  username\\n
+          S→C  "SENHA:\\n"              (repetido até MAX_AUTH_ATTEMPTS)
+          C→S  password\\n
+          S→C  "AUTH_OK\\n"            → acesso concedido
+               "AUTH_ERR:X/Y\\n"       → falha, tente novamente
+               "AUTH_BAN\\n"           → bloqueado, conexão encerrada
+
+        Mensagens de erro são genéricas (não revelam se o usuário existe)
+        para evitar enumeração de usernames.
+
+        Returns:
+            Tupla (success, username). username é a string de identificação
+            que será usada no canal — vazia em caso de falha.
+        """
+        try:
+            # Banner + prompt de usuário (enviados juntos num único send)
+            self.client_socket.send(
+                b"\033[1;36m=== CENTRAL DE COMUNICACAO DE RESGATE ===\033[0m\n"
+                b"\033[1;31m[CANAL RESTRITO - Autenticacao obrigatoria]\033[0m\n"
+                b"\n"
+                b"USUARIO:\n"
+            )
+
+            raw = self.client_socket.recv(1024)
+            if not raw:
+                return False, ""
+            username = raw.decode(errors="replace").strip()
+
+            if not username:
+                self.client_socket.send(b"AUTH_BAN\n")
+                return False, ""
+
+            # Loop de senha com limite de tentativas
+            for attempt in range(1, MAX_AUTH_ATTEMPTS + 1):
+                self.client_socket.send(b"SENHA:\n")
+
+                raw = self.client_socket.recv(1024)
+                if not raw:
+                    return False, ""
+                password = raw.decode(errors="replace").strip()
+
+                if self.server.auth.verify(username, password):
+                    self.server.log("INFO", f"Auth OK: '{username}' de {self.addr}")
+                    self.client_socket.send(b"AUTH_OK\n")
+                    return True, username
+
+                # Falha — mesma mensagem independente de usuário existir ou não
+                self.server.log(
+                    "AVISO",
+                    f"Auth FAIL: '{username}' tentativa {attempt}/{MAX_AUTH_ATTEMPTS} de {self.addr}",
+                )
+                if attempt < MAX_AUTH_ATTEMPTS:
+                    self.client_socket.send(
+                        f"AUTH_ERR:{attempt}/{MAX_AUTH_ATTEMPTS}\n".encode()
+                    )
+                else:
+                    self.client_socket.send(b"AUTH_BAN\n")
+                    self.server.log(
+                        "AVISO",
+                        f"Bloqueado: '{username}' de {self.addr} apos {MAX_AUTH_ATTEMPTS} tentativas",
+                    )
+
+            return False, ""
+
+        except OSError as e:
+            self.server.log("ERRO", f"Erro de auth em {self.addr}: {e}")
+            return False, ""
+
     def run(self) -> None:
         """
         Loop principal da thread do cliente.
 
         Fluxo:
-          1. Solicita e valida o nome do socorrista.
+          1. Autentica o operador via _authenticate().
           2. Registra o cliente no servidor.
           3. Envia o briefing (histórico recente).
           4. Anuncia entrada no canal.
@@ -290,30 +373,29 @@ class ClientHandler(threading.Thread):
           6. Em qualquer exceção ou desconexão, remove o cliente e fecha o socket.
         """
         try:
-            self.client_socket.send(
-                b"\033[1;36m=== CENTRAL DE COMUNICACAO DE RESGATE ===\033[0m\n"
-                b"Digite seu nome de identificacao: "
-            )
-            raw = self.client_socket.recv(1024)
-            if not raw:
+            # ── Fase 1: autenticação ──────────────────────────────────────
+            success, username = self._authenticate()
+            if not success:
+                self.client_socket.close()
                 return
 
-            self.name = raw.decode().strip() or "Anonimo"
+            self.name = username
 
+            # ── Fase 2: entrada no canal ──────────────────────────────────
             self.server.add_client(self.client_socket, self.name)
-            self.server.log("INFO", f"{self.name} conectado de {self.addr}")
+            self.server.log("INFO", f"{self.name} autenticado e conectado de {self.addr}")
 
             self.server.send_history(self.client_socket)
             self.server.broadcast_system_message(f"{self.name} entrou no canal")
 
-            # ── loop de mensagens ──
+            # ── Fase 3: loop de mensagens ─────────────────────────────────
             while True:
                 message = self.client_socket.recv(1024)
 
                 if not message:
                     break  # cliente fechou a conexão
 
-                text = message.decode().strip()
+                text = message.decode(errors="replace").strip()
                 if not text:
                     continue
 
