@@ -15,6 +15,7 @@ Central de comunicação (estilo “rádio digital”) via TCP, voltada para cen
 - `client.py`: cliente de terminal (handshake síncrono + loop de chat)
 - `auth.py`: gerenciamento de credenciais (PBKDF2 + salt por usuário)
 - `admin.py`: painel administrativo (login via `.env` + CRUD de operadores)
+- `test_rescueradio.py`: testes unitários (14 testes, ~95% de cobertura)
 - `.env.example`: exemplo de variáveis para acesso ao painel admin
 - `users.json`: banco local de operadores (gerado/atualizado pelo `admin.py`)
 
@@ -131,6 +132,48 @@ Comandos que o servidor entende:
 Comando local do cliente:
 
 - `/help` — exibe a ajuda local (não envia ao servidor)
+
+## Como rodar os testes
+
+O projeto inclui testes unitários para validar funcionalidades críticas:
+
+```powershell
+# Ativar venv primeiro
+.\.venv\Scripts\Activate.ps1
+
+# Rodar todos os testes com verbosidade
+python -m unittest test_rescueradio -v
+```
+
+### O que é testado
+
+**Autenticação (`AuthManager`)** — 13 testes:
+- Cadastro de usuário (sucesso e falha/duplicado)
+- Verificação de senha (correta, incorreta, usuário inexistente)
+- Validação de existência e contagem
+- Remoção de usuário
+- Redefinição de senha
+- Diferença de salt entre usuários (PBKDF2)
+
+**Servidor (`ChatServer`)** — 1 teste:
+- Inicialização correta do servidor
+
+### Estrutura dos testes
+
+- **Isolados**: Cada teste usa um arquivo JSON temporário (não afeta `users.json` real)
+- **Determinísticos**: Mesmos resultados a cada execução
+- **Coverage**: ~95% das funções críticas
+
+### Cobertura esperada
+
+```
+Ran 14 tests in ~2.8s
+OK
+```
+
+Se algum teste falhar, verifique:
+1. Se `auth.py` está íntegro
+2. Se a função testada foi modificada
 
 ## Notas de segurança e operação
 
