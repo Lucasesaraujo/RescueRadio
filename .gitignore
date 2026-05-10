@@ -1,0 +1,33 @@
+# ──────────────────────────────────────────────
+# RescueRadio — .gitignore
+# ──────────────────────────────────────────────
+
+# Credenciais e dados sensíveis — NUNCA commitar
+.env
+users.json
+
+# Ambiente virtual Python
+venv/
+.venv/
+env/
+ENV/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Distribuição / build
+dist/
+build/
+*.egg-info/
+
+# IDEs
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
