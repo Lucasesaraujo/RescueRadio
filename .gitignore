@@ -130,3 +130,8 @@ coverage-final.json
 *.sqlite
 *.sqlite3
 *.db
+
+# =========================
+# Agent Context
+# =========================
+docs/codex-context.md
