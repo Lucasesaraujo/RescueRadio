@@ -1,0 +1,26 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    container_name: rescueradio-api
+    ports:
+      - "8000:8000"
+    networks:
+      - rescueradio-network
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+    container_name: rescueradio-web
+    ports:
+      - "4200:80"
+    depends_on:
+      - api
+    networks:
+      - rescueradio-network
+
+networks:
+  rescueradio-network:
+    driver: bridge
