@@ -1,0 +1,101 @@
+<main class="page">
+  <section class="shell">
+    <header class="header">
+      <div>
+        <p class="eyebrow">Equipe 11</p>
+        <h1>RescueRadio</h1>
+        <p class="subtitle">Canal de rádio digital via texto para equipes de resgate</p>
+      </div>
+
+      <div class="status" [class.connected]="connected">
+        {{ connectionStatus }}
+      </div>
+    </header>
+
+    <section class="connect-card" *ngIf="!connected">
+      <h2>Entrar no canal</h2>
+      <p>Informe seu nome para acessar o canal geral da operação.</p>
+
+      <div class="form-row">
+        <input
+          type="text"
+          placeholder="Nome do socorrista"
+          [(ngModel)]="username"
+          (keyup.enter)="connect()"
+        />
+
+        <button type="button" (click)="connect()">Entrar</button>
+      </div>
+    </section>
+
+    <section class="radio-layout" *ngIf="connected">
+      <aside class="sidebar">
+        <div class="panel">
+          <h2>Canal</h2>
+          <p class="channel">{{ channelId }}</p>
+        </div>
+
+        <div class="panel">
+          <h2>Membros ativos</h2>
+
+          <ul class="members" *ngIf="members.length > 0; else noMembers">
+            <li *ngFor="let member of members">
+              <span class="member-dot"></span>
+              {{ member.usuario }}
+            </li>
+          </ul>
+
+          <ng-template #noMembers>
+            <p class="muted">Nenhum membro listado ainda.</p>
+          </ng-template>
+        </div>
+
+        <div class="panel">
+          <h2>Eventos</h2>
+
+          <ul class="events">
+            <li *ngFor="let event of systemEvents">
+              {{ event }}
+            </li>
+          </ul>
+        </div>
+
+        <button type="button" class="secondary" (click)="disconnect()">
+          Sair do canal
+        </button>
+      </aside>
+
+      <section class="chat">
+        <div class="messages">
+          <article
+            class="message"
+            *ngFor="let message of messages"
+            [class.mine]="message.usuario === username"
+          >
+            <header>
+              <strong>{{ message.usuario }}</strong>
+              <span>{{ message.timestamp_iso | date: 'HH:mm:ss' }}</span>
+            </header>
+
+            <p>{{ message.corpo_texto }}</p>
+          </article>
+
+          <div class="empty" *ngIf="messages.length === 0">
+            Nenhuma mensagem no canal ainda.
+          </div>
+        </div>
+
+        <footer class="composer">
+          <input
+            type="text"
+            placeholder="Digite uma mensagem para a equipe..."
+            [(ngModel)]="messageText"
+            (keyup.enter)="sendMessage()"
+          />
+
+          <button type="button" (click)="sendMessage()">Enviar</button>
+        </footer>
+      </section>
+    </section>
+  </section>
+</main>
