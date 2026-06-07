@@ -1,0 +1,23 @@
+_format_version: "3.0"
+
+services:
+  - name: rescueradio-api
+    url: http://api:8000
+    routes:
+      - name: api-health
+        paths:
+          - /health
+        strip_path: false
+
+      - name: api-routes
+        paths:
+          - /api
+        strip_path: true
+
+      - name: websocket-route
+        paths:
+          - /ws
+        strip_path: false
+        protocols:
+          - http
+          - https

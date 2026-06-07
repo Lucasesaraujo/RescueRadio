@@ -46,6 +46,16 @@ export class App {
   ) {}
 
   connect(): void {
+    if (
+      this.socket &&
+      (
+        this.socket.readyState === WebSocket.OPEN ||
+        this.socket.readyState === WebSocket.CONNECTING
+      )
+    ) {
+      return;
+    }
+
     const cleanedUsername = this.username.trim();
 
     if (!cleanedUsername) {
@@ -53,7 +63,7 @@ export class App {
       return;
     }
 
-    const url = `ws://localhost:8000/ws/channel/${this.channelId}?usuario=${encodeURIComponent(cleanedUsername)}`;
+    const url = `ws://localhost:8001/ws/channel/${this.channelId}?usuario=${encodeURIComponent(cleanedUsername)}`;
 
     this.socket = new WebSocket(url);
     this.connectionStatus = 'Conectando...';
