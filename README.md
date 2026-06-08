@@ -65,6 +65,14 @@ RescueRadio/
 └── README.md
 ```
 
+## Documentação complementar
+
+- [Arquitetura](docs/architecture.md)
+- [Protocolo de comunicação](docs/protocol.md)
+- [Estado em memória](docs/in-memory-state.md)
+- [Cenários de teste manual](docs/test-scenarios.md)
+- [Exemplos de mensagens](docs/sample-messages.md)
+
 ## Como rodar o projeto
 
 ### Pré-requisitos
