@@ -68,8 +68,9 @@ class ChannelState:
             return
 
         disconnected_users = []
+        channel_connections = list(self.connections[channel_id].items())
 
-        for usuario, connection in self.connections[channel_id].items():
+        for usuario, connection in channel_connections:
             try:
                 await connection.send_json(message)
             except Exception:

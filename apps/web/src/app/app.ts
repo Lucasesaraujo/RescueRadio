@@ -63,6 +63,8 @@ export class App {
       return;
     }
 
+    this.username = cleanedUsername;
+
     const url = `ws://localhost:8001/ws/channel/${this.channelId}?usuario=${encodeURIComponent(cleanedUsername)}`;
 
     this.socket = new WebSocket(url);
@@ -106,14 +108,15 @@ export class App {
 
   sendMessage(): void {
     const text = this.messageText.trim();
+    const cleanedUsername = this.username.trim();
 
-    if (!text || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
+    if (!text || !cleanedUsername || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
       return;
     }
 
     const message: RescueRadioMessage = {
       type: 'SEND_MESSAGE',
-      usuario: this.username,
+      usuario: cleanedUsername,
       timestamp_iso: new Date().toISOString(),
       corpo_texto: text,
     };
